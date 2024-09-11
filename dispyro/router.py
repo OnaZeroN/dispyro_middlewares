@@ -4,8 +4,6 @@ from typing import Dict, List
 from pyrogram import Client, handlers
 from pyrogram.handlers.handler import Handler as PyrogramHandler
 
-import dispyro
-
 from .handlers import Handler
 from .handlers_holders import (
     CallbackQueryHandlersHolder,
@@ -82,22 +80,20 @@ class Router:
         self._triggered = False
 
         for handler in self.all_handlers:
-            handler._triggered = False
+            handler.triggered = False
 
     async def feed_update(
         self,
         client: Client,
-        dispatcher: "dispyro.Dispatcher",
         update: Update,
         handler_type: PyrogramHandler,
         **deps,
     ) -> bool:
-        run_logic = dispatcher._run_logic
-
         handlers_holder = self.handlers_correlation[handler_type]
-
-        result = await handlers_holder.feed_update(
-            client=client, run_logic=run_logic, update=update, **deps
+        result = await handlers_holder.wrap_outer_middleware(
+            callback=handlers_holder.feed_update,
+            client=client,
+            update=update,
+            deps=deps
         )
-
-        return result
+        return bool(result)

@@ -65,12 +65,12 @@ class Handler:
         self._name = name or "unnamed_handler"
         self.callback: Callback = safe_call(callable=callback)
         self._router = router
-        self._filters: Filter = Filter() & filters
+        self.filters: Filter = Filter() & filters
 
         # This field indicates whether handler was called during handling current
         # update. Defaults to `False`. Set to `False` on cleanup (after finishing
         # update processing).
-        self._triggered: bool = False
+        self.triggered: bool = False
 
     async def __call__(
         self,
@@ -79,13 +79,8 @@ class Handler:
         update: Update,
         **deps,
     ) -> None:
-        filters_passed = await self._filters(client=client, update=update, **deps)
-
-        if not filters_passed:
-            return
-
-        await self.callback(client, update, **deps)
-        self._triggered = True
+        self.triggered = True
+        return await self.callback(client, update, **deps)
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__} `{self._name}`"
@@ -118,7 +113,7 @@ class CallbackQueryHandler(Handler):
         update: types.CallbackQuery,
         **deps,
     ) -> None:
-        await super().__call__(client=client, update=update, **deps)
+        return await super().__call__(client=client, update=update, **deps)
 
 
 class ChatMemberUpdatedHandler(Handler):
@@ -148,7 +143,7 @@ class ChatMemberUpdatedHandler(Handler):
         update: types.ChatMemberUpdated,
         **deps,
     ) -> None:
-        await super().__call__(client=client, update=update, **deps)
+        return await super().__call__(client=client, update=update, **deps)
 
 
 class ChosenInlineResultHandler(Handler):
@@ -178,7 +173,7 @@ class ChosenInlineResultHandler(Handler):
         update: types.ChosenInlineResult,
         **deps,
     ) -> None:
-        await super().__call__(client=client, update=update, **deps)
+        return await super().__call__(client=client, update=update, **deps)
 
 
 class DeletedMessagesHandler(Handler):
@@ -208,7 +203,7 @@ class DeletedMessagesHandler(Handler):
         update: List[types.Message],
         **deps,
     ) -> None:
-        await super().__call__(client=client, update=update, **deps)
+        return await super().__call__(client=client, update=update, **deps)
 
 
 class EditedMessageHandler(Handler):
@@ -238,7 +233,7 @@ class EditedMessageHandler(Handler):
         update: types.Message,
         **deps,
     ) -> None:
-        await super().__call__(client=client, update=update, **deps)
+        return await super().__call__(client=client, update=update, **deps)
 
 
 class InlineQueryHandler(Handler):
@@ -268,7 +263,7 @@ class InlineQueryHandler(Handler):
         update: types.InlineQuery,
         **deps,
     ) -> None:
-        await super().__call__(client=client, update=update, **deps)
+        return await super().__call__(client=client, update=update, **deps)
 
 
 class MessageHandler(Handler):
@@ -298,7 +293,7 @@ class MessageHandler(Handler):
         update: types.Message,
         **deps,
     ) -> None:
-        await super().__call__(client=client, update=update, **deps)
+        return await super().__call__(client=client, update=update, **deps)
 
 
 class PollHandler(Handler):
@@ -328,7 +323,7 @@ class PollHandler(Handler):
         update: types.Poll,
         **deps,
     ) -> None:
-        await super().__call__(client=client, update=update, **deps)
+        return await super().__call__(client=client, update=update, **deps)
 
 
 class RawUpdateHandler(Handler):
@@ -358,7 +353,7 @@ class RawUpdateHandler(Handler):
         update: PackedRawUpdate,
         **deps,
     ) -> None:
-        await super().__call__(client=client, update=update, **deps)
+        return await super().__call__(client=client, update=update, **deps)
 
 
 class UserStatusHandler(Handler):
@@ -388,4 +383,4 @@ class UserStatusHandler(Handler):
         update: types.User,
         **deps,
     ) -> None:
-        await super().__call__(client=client, update=update, **deps)
+        return await super().__call__(client=client, update=update, **deps)

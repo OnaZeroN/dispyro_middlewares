@@ -7,7 +7,8 @@ from dispyro import Dispatcher, Router, Filter
 
 router = Router()
 router.message.filter(filters.me)  # processing only messages from account itself
-router.message.filter(filters.command("salad", prefixes=".")) # processing only .salad command
+router.message.filter(filters.command("salad", prefixes="."))  # processing only .salad command
+
 
 async def fruits_filter_callback(_, message: types.Message, fruits: List[str]):
     # this filter goes after filters.command(), so message.command is not None
@@ -15,9 +16,11 @@ async def fruits_filter_callback(_, message: types.Message, fruits: List[str]):
 
 fruits_filter = Filter(fruits_filter_callback)
 
+
 @router.message(fruits_filter)
 async def handler(_, message: types.Message):
     await message.edit_text(text="😋 Yummy fruit salad")
+
 
 @router.message(~fruits_filter)
 async def handler(_, message: types.Message):

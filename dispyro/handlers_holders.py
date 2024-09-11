@@ -1,12 +1,12 @@
 from collections.abc import Container
-from typing import Callable, List, Optional
+from typing import Any, Callable, Dict, List, Optional
+
 
 from pyrogram import Client, types
 from pyrogram.raw import base
 
 import dispyro
 
-from .enums import RunLogic
 from .filters import Filter
 from .handlers import (
     CallbackQueryHandler,
@@ -20,6 +20,7 @@ from .handlers import (
     RawUpdateHandler,
     UserStatusHandler,
 )
+from .middlewares import MiddlewareManager
 from .types import AnyFilter, Callback, Handler, PackedRawUpdate, Update
 
 
@@ -27,12 +28,17 @@ class HandlersHolder:
     __handler_type__: Handler
 
     def __init__(self, router: "dispyro.Router", filters: AnyFilter = None):
-        self.filters = Filter() & filters if filters else Filter()
-        self.handlers: List[Handler] = []
         self._router = router
 
-    def filter(self, filter: AnyFilter) -> None:
-        self.filters &= filter
+        self.handlers: List[Handler] = []
+
+        self.filters = Filter() & filters if filters else Filter()
+
+        self.middleware = MiddlewareManager()
+        self.outer_middleware = MiddlewareManager()
+
+    def filter(self, any_filter: AnyFilter) -> None:
+        self.filters &= any_filter
 
     def register(
         self, callback: Callback, filters: Filter = Filter(), priority: int = None
@@ -58,27 +64,32 @@ class HandlersHolder:
 
         return decorator
 
+    def wrap_outer_middleware(self, callback: Any, client: Client, update: Update, deps: Dict[str, Any]):
+        wrapped_outer = self.middleware.wrap_middlewares(
+            self.outer_middleware.middlewares,
+            callback,
+        )
+        return wrapped_outer(client, update, deps)
+
     async def feed_update(
-        self, client: Client, run_logic: RunLogic, update: Update, **deps
+        self, client: Any, update: Update, **deps: Dict[str, Any]
     ) -> bool:
-        filters_passed = await self.filters(client, update, **deps)
-
-        if not filters_passed:
-            return False
-
         self._router._triggered = True
-
         handlers = sorted(self.handlers, key=lambda x: x._priority)
         for handler in handlers:
-            await handler(client=client, update=update, **deps)
+            router_filters_passed = await self.filters(client=client, update=update, **deps)
+            if not router_filters_passed:
+                continue
+            handler_filters_passed = await handler.filters(client=client, update=update, **deps)
+            if not handler_filters_passed:
+                continue
 
-            if handler._triggered and run_logic in {
-                RunLogic.ONE_RUN_PER_ROUTER,
-                RunLogic.ONE_RUN_PER_EVENT,
-            }:
-                return True
-
-        return any(handler._triggered for handler in handlers)
+            wrapped_inner = self.outer_middleware.wrap_middlewares(
+                self.middleware.middlewares,
+                handler,
+            )
+            return await wrapped_inner(client, update, deps)
+        return False
 
 
 class CallbackQueryHandlersHolder(HandlersHolder):
@@ -86,9 +97,9 @@ class CallbackQueryHandlersHolder(HandlersHolder):
     handlers: List[CallbackQueryHandler]
 
     async def feed_update(
-        self, client: Client, run_logic: RunLogic, update: types.CallbackQuery, **deps
+        self, client: Client, update: types.CallbackQuery, **deps
     ) -> bool:
-        return await super().feed_update(client=client, run_logic=run_logic, update=update, **deps)
+        return await super().feed_update(client=client, update=update, **deps)
 
 
 class ChatMemberUpdatedHandlersHolder(HandlersHolder):
@@ -96,9 +107,9 @@ class ChatMemberUpdatedHandlersHolder(HandlersHolder):
     handlers: List[ChatMemberUpdatedHandler]
 
     async def feed_update(
-        self, client: Client, run_logic: RunLogic, update: types.ChatMemberUpdated, **deps
+        self, client: Client, update: types.ChatMemberUpdated, **deps
     ) -> bool:
-        return await super().feed_update(client=client, run_logic=run_logic, update=update, **deps)
+        return await super().feed_update(client=client, update=update, **deps)
 
 
 class ChosenInlineResultHandlersHolder(HandlersHolder):
@@ -106,9 +117,9 @@ class ChosenInlineResultHandlersHolder(HandlersHolder):
     handlers: List[ChosenInlineResultHandler]
 
     async def feed_update(
-        self, client: Client, run_logic: RunLogic, update: types.ChosenInlineResult, **deps
+        self, client: Client, update: types.ChosenInlineResult, **deps
     ) -> bool:
-        return await super().feed_update(client=client, run_logic=run_logic, update=update, **deps)
+        return await super().feed_update(client=client, update=update, **deps)
 
 
 class DeletedMessagesHandlersHolder(HandlersHolder):
@@ -116,9 +127,9 @@ class DeletedMessagesHandlersHolder(HandlersHolder):
     handlers: List[DeletedMessagesHandler]
 
     async def feed_update(
-        self, client: Client, run_logic: RunLogic, update: List[types.Message], **deps
+        self, client: Client, update: List[types.Message], **deps
     ) -> bool:
-        return await super().feed_update(client=client, run_logic=run_logic, update=update, **deps)
+        return await super().feed_update(client=client, update=update, **deps)
 
 
 class EditedMessageHandlersHolder(HandlersHolder):
@@ -126,9 +137,9 @@ class EditedMessageHandlersHolder(HandlersHolder):
     handlers: List[EditedMessageHandler]
 
     async def feed_update(
-        self, client: Client, run_logic: RunLogic, update: types.Message, **deps
+        self, client: Client, update: types.Message, **deps
     ) -> bool:
-        return await super().feed_update(client=client, run_logic=run_logic, update=update, **deps)
+        return await super().feed_update(client=client, update=update, **deps)
 
 
 class InlineQueryHandlersHolder(HandlersHolder):
@@ -136,9 +147,9 @@ class InlineQueryHandlersHolder(HandlersHolder):
     handlers: List[InlineQueryHandler]
 
     async def feed_update(
-        self, client: Client, run_logic: RunLogic, update: types.InlineQuery, **deps
+        self, client: Client, update: types.InlineQuery, **deps
     ) -> bool:
-        return await super().feed_update(client=client, run_logic=run_logic, update=update, **deps)
+        return await super().feed_update(client=client, update=update, **deps)
 
 
 class MessageHandlersHolder(HandlersHolder):
@@ -146,9 +157,9 @@ class MessageHandlersHolder(HandlersHolder):
     handlers: List[MessageHandler]
 
     async def feed_update(
-        self, client: Client, run_logic: RunLogic, update: types.Message, **deps
+        self, client: Client, update: types.Message, **deps
     ) -> bool:
-        return await super().feed_update(client=client, run_logic=run_logic, update=update, **deps)
+        return await super().feed_update(client=client, update=update, **deps)
 
 
 class PollHandlersHolder(HandlersHolder):
@@ -156,9 +167,9 @@ class PollHandlersHolder(HandlersHolder):
     handlers: List[PollHandler]
 
     async def feed_update(
-        self, client: Client, run_logic: RunLogic, update: types.Poll, **deps
+        self, client: Client, update: types.Poll, **deps
     ) -> bool:
-        return await super().feed_update(client=client, run_logic=run_logic, update=update, **deps)
+        return await super().feed_update(client=client, update=update, **deps)
 
 
 class RawUpdateHandlersHolder(HandlersHolder):
@@ -166,22 +177,22 @@ class RawUpdateHandlersHolder(HandlersHolder):
     handlers: List[RawUpdateHandler]
 
     async def feed_update(
-        self, client: Client, run_logic: RunLogic, update: PackedRawUpdate, **deps
+        self, client: Client, update: PackedRawUpdate, **deps
     ) -> bool:
-        return await super().feed_update(client=client, run_logic=run_logic, update=update, **deps)
+        return await super().feed_update(client=client, update=update, **deps)
 
     def register(
         self,
         callback: Callback,
         filters: Filter = Filter(),
         priority: int = None,
-        allowed_updates: List[type[base.Update]] = None,
-        allowed_update: type[base.Update] = None,
+        allowed_updates: List[base.Update] = None,
+        allowed_update: base.Update = None,
     ) -> Callback:
         if allowed_updates and allowed_update:
             raise ValueError("`allowed_updates` and `allowed_update` are mutually exclusive")
 
-        _allowed_updates: Optional[List[type[base.Update]]] = None
+        _allowed_updates: Optional[List[base.Update]] = None
 
         if allowed_update is not None:
             if isinstance(allowed_update, Container):
@@ -211,8 +222,8 @@ class RawUpdateHandlersHolder(HandlersHolder):
         self,
         filters: Filter = Filter(),
         priority: int = None,
-        allowed_updates: List[type[base.Update]] = None,
-        allowed_update: type[base.Update] = None,
+        allowed_updates: List[base.Update] = None,
+        allowed_update: base.Update = None,
     ) -> Callable[[Callback], Callback]:
         def decorator(callback: Callback) -> Callback:
             return self.register(
@@ -231,6 +242,6 @@ class UserStatusHandlersHolder(HandlersHolder):
     handlers: List[UserStatusHandler]
 
     async def feed_update(
-        self, client: Client, run_logic: RunLogic, update: types.User, **deps
+        self, client: Client, update: types.User, **deps
     ) -> bool:
-        return await super().feed_update(client=client, run_logic=run_logic, update=update, **deps)
+        return await super().feed_update(client=client, update=update, **deps)

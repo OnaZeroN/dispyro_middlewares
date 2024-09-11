@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any, Callable, Coroutine, Dict, List, Union
+from typing import Any, Callable, Coroutine, Dict, List
 
 from pyrogram import Client, handlers, idle
 from pyrogram.handlers.handler import Handler
@@ -23,7 +23,7 @@ from .types import PackedRawUpdate, Update
 
 
 class Dispatcher:
-    """Main class to interract with API. Can register handlers by itself and
+    """Main class to interact with API. Can register handlers by itself and
     attach other routers.
     """
 
@@ -159,7 +159,6 @@ class Dispatcher:
         for router in self.routers:
             result = await router.feed_update(
                 client=client,
-                dispatcher=self,
                 update=update,
                 handler_type=handler_type,
                 **self._deps,
@@ -175,6 +174,7 @@ class Dispatcher:
         *clients: Client,
         ignore_preparation: bool = None,
         only_start: bool = False,
+        fast_start: bool = False,
     ) -> None:
         self.cleanup()
 
@@ -194,7 +194,10 @@ class Dispatcher:
 
         for client in clients:
             if not client.is_connected:
-                await client.start()
+                if fast_start:
+                    asyncio.create_task(client.start())
+                else:
+                    await client.start()
 
         if not only_start:
             await idle()
